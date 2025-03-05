@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt -v || cat /root/.cache/pip/log/debug.log
 
 # Install flash-attn separately with proper build flags
-RUN pip install --no-cache-dir "flash-attn>=2.0.0" --no-build-isolation -v || cat /root/.cache/pip/log/debug.log
+RUN pip install --no-cache-dir "flash-attn" --no-build-isolation -v || cat /root/.cache/pip/log/debug.log
 
 # Copy application code
 COPY main.py .
