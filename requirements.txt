@@ -1,10 +1,10 @@
-fastapi
-uvicorn
-transformers
-torch
-pillow
-qwen_vl_utils
-torchvision
-flash-attn
-python-multipart
-accelerate
+fastapi==0.104.1
+uvicorn==0.24.0
+transformers==4.37.0
+torch==2.1.0
+pillow==10.1.0
+# qwen-vl-utils is installed separately in the Dockerfile
+torchvision==0.16.0
+python-multipart==0.0.7
+accelerate==0.25.0
+# flash-attn will be installed separately in the Dockerfile
