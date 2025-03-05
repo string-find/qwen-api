@@ -5,3 +5,6 @@ torch
 pillow
 qwen_vl_utils
 torchvision
+flash-attn
+python-multipart
+accelerate
