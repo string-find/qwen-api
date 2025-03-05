@@ -34,35 +34,34 @@ except Exception as e:
 # Define the object detection endpoint
 @app.post("/detect")
 async def detect_objects(file: UploadFile = File(...), classes: str = "person,car"):
-    """
-    Detect objects in an image using Qwen2.5-VL-7B-Instruct.
+    # Parse classes, remove duplicates
+    class_list = list(set([cls.strip() for cls in classes.split(",") if cls.strip()]))
+    if not class_list:
+        return {"detections": [], "message": "No valid classes provided"}
 
-    Args:
-        file (UploadFile): The uploaded image file.
-        classes (str): Comma-separated list of object classes (e.g., "person,car").
+    # Read and preprocess image
+    try:
+        image_bytes = await file.read()
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception:
+        return {"error": "Invalid image file"}
 
-    Returns:
-        dict: JSON with detected objects and their bounding boxes.
-    """
-    # Parse the classes parameter
-    class_list = [cls.strip() for cls in classes.split(",")]
-
-    # Read and preprocess the image
-    image_bytes = await file.read()
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-
-    # Resize image to reduce memory usage (optional, adjust as needed)
     max_size = 640
+    original_width, original_height = image.size
     image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+    resized_width, resized_height = image.size
+    width_scale = original_width / resized_width
+    height_scale = original_height / resized_height
 
-    # Create prompt for object detection
+    # Create refined prompt
     prompt = (
         f"Detect the following objects in the image: {', '.join(class_list)}. "
-        "Provide their bounding boxes in JSON format as a list of dictionaries, "
-        "each with 'class' and 'box' keys, where 'box' is [x_min, y_min, x_max, y_max]."
+        "Output only a JSON list of detected objects with their bounding boxes, "
+        "each as {{'class': 'object_name', 'box': [x_min, y_min, x_max, y_max]}}. "
+        "Do not include any other text or explanations."
     )
 
-    # Prepare input messages for the model
+    # Prepare inputs (unchanged)
     messages = [
         {
             "role": "user",
@@ -72,8 +71,6 @@ async def detect_objects(file: UploadFile = File(...), classes: str = "person,ca
             ]
         }
     ]
-
-    # Process inputs
     text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     image_inputs, video_inputs = process_vision_info(messages)
     inputs = processor(
@@ -84,19 +81,35 @@ async def detect_objects(file: UploadFile = File(...), classes: str = "person,ca
         return_tensors="pt"
     ).to(device)
 
-    # Generate output
+    # Generate output (unchanged)
     with torch.no_grad():
         generated_ids = model.generate(**inputs, max_new_tokens=512)
     generated_ids_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
     output_text = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
-    # Parse the output into JSON
-    try:
-        detections = json.loads(output_text)
-        if not isinstance(detections, list):
-            detections = [detections]
-    except json.JSONDecodeError:
-        detections = []  # Fallback if JSON parsing fails
+    # Robust JSON parsing
+    import re
+    match = re.search(r'\[.*\]', output_text, re.DOTALL)
+    if match:
+        json_str = match.group(0)
+        try:
+            detections = json.loads(json_str)
+            if not isinstance(detections, list):
+                detections = [detections]
+        except json.JSONDecodeError:
+            detections = []
+    else:
+        detections = []
+
+    # Scale bounding boxes to original size (optional)
+    for detection in detections:
+        box = detection['box']
+        detection['box'] = [
+            box[0] * width_scale,
+            box[1] * height_scale,
+            box[2] * width_scale,
+            box[3] * height_scale
+        ]
 
     return {"detections": detections}
 
